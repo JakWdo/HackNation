@@ -1,0 +1,16 @@
+/**
+ * === TAILWIND CSS ===
+ *
+ * @tailwind base - resetuje style przeglądarki
+ * @tailwind components - klasy komponentów Tailwind
+ * @tailwind utilities - klasy utility (flex, p-4, text-red-500, etc.)
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Własne style globalne */
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+}

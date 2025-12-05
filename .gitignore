@@ -9,6 +9,9 @@ __pycache__/
 .env
 .env.local
 .env.*.local
+.claude
+.gemimi
+.gitignore
 
 # IDE
 .idea/

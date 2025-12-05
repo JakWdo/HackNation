@@ -1,0 +1,52 @@
+# API
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Config
+pydantic
+pydantic-settings
+python-dotenv
+
+# AI - LLM Providers
+openai
+anthropic
+google-generativeai
+
+# AI - LangChain ecosystem
+langchain
+langchain-openai
+langchain-anthropic
+langchain-google-genai
+langchain-community
+langgraph
+langsmith
+
+# AI - Hugging Face
+transformers
+huggingface-hub
+sentence-transformers
+accelerate
+
+# Vector stores
+chromadb
+faiss-cpu
+
+# Data
+pandas
+numpy
+polars
+
+# HTTP
+httpx
+aiohttp
+requests
+
+# Web scraping
+beautifulsoup4
+feedparser
+
+# Utils
+tenacity
+tiktoken
+pyyaml
