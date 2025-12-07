@@ -23,9 +23,13 @@ import {
   X, 
   Maximize2,
   Clock,
-  Cpu
+  Cpu,
+  Tag,
+  ArrowRight
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { CredibilityScore, CredibilityLevel, InformationUnit } from '@/types/schemas';
+import { SourceCredibilityPanel } from './SourceCredibilityPanel';
 
 // Typy dla kroków myślenia
 export interface ThoughtStep {
@@ -35,9 +39,55 @@ export interface ThoughtStep {
   status: 'thinking' | 'searching' | 'analyzing' | 'complete' | 'error';
   title: string;
   content: string;
-  documents?: { title: string; relevance: number }[];
+  documents?: {
+    title: string;
+    relevance: number;
+    source: string;
+    url?: string | null;
+    credibility?: CredibilityScore | null;
+  }[];
+  taggedInfo?: InformationUnit[]; // Nowe pole dla Feature 1.1
   children?: ThoughtStep[];
   timestamp: Date;
+
+  // === NOWE: Rozbudowane Chain of Thought dla wyjaśnialności ===
+  stepType?: 'thinking' | 'reasoning' | 'correlation' | 'hypothesis' | 'evidence' | 'inference';
+
+  // Dla stepType = 'reasoning'
+  stepTitle?: string;
+  reasoning?: string;
+  evidence?: { content: string; source: string; weight: number }[];
+  stepNumber?: number;
+  totalSteps?: number;
+
+  // Dla stepType = 'correlation'
+  factA?: string;
+  factB?: string;
+  correlationType?: 'positive' | 'negative' | 'causal' | 'temporal';
+  correlationStrength?: number;
+  explanation?: string;
+  sources?: string[];
+
+  // Dla stepType = 'hypothesis'
+  hypothesis?: string;
+  basis?: string;
+  testablePredictions?: string[];
+
+  // Dla stepType = 'evidence'
+  hypothesisRef?: string;
+  evidenceType?: 'supporting' | 'contradicting';
+  impact?: string;
+  weight?: number;
+
+  // Dla stepType = 'inference' (KLUCZOWY dla wyjaśnialności)
+  historicalFact?: string;
+  historicalSource?: string;
+  historicalDate?: string;
+  prediction?: string;
+  predictionTimeframe?: string;
+  reasoningChain?: string[];
+  keyAssumptions?: string[];
+  confidence?: number;
 }
 
 interface ChainOfThoughtProps {
@@ -47,40 +97,79 @@ interface ChainOfThoughtProps {
 
 // Kolory i ikony dla typów agentów
 const AGENT_CONFIG: Record<string, { color: string; bg: string; border: string; icon: React.ElementType; label: string }> = {
-  orchestrator: { 
-    color: 'text-blue-600', 
-    bg: 'bg-blue-50', 
+  orchestrator: {
+    color: 'text-blue-600',
+    bg: 'bg-blue-50',
     border: 'border-blue-200',
-    icon: Target, 
-    label: 'Orkiestrator' 
+    icon: Target,
+    label: 'Orkiestrator'
   },
-  regional: { 
-    color: 'text-amber-600', 
-    bg: 'bg-amber-50', 
+  regional: {
+    color: 'text-amber-600',
+    bg: 'bg-amber-50',
     border: 'border-amber-200',
-    icon: Globe, 
-    label: 'Agent Regionalny' 
+    icon: Globe,
+    label: 'Agent Regionalny'
   },
-  country: { 
-    color: 'text-cyan-600', 
-    bg: 'bg-cyan-50', 
+  country: {
+    color: 'text-cyan-600',
+    bg: 'bg-cyan-50',
     border: 'border-cyan-200',
-    icon: Globe, 
-    label: 'Agent Krajowy' 
+    icon: Globe,
+    label: 'Agent Krajowy'
   },
-  sector: { 
-    color: 'text-emerald-600', 
-    bg: 'bg-emerald-50', 
+  sector: {
+    color: 'text-emerald-600',
+    bg: 'bg-emerald-50',
     border: 'border-emerald-200',
-    icon: PieChart, 
-    label: 'Agent Sektorowy' 
+    icon: PieChart,
+    label: 'Agent Sektorowy'
   },
-  synthesis: { 
-    color: 'text-purple-600', 
-    bg: 'bg-purple-50', 
+  synthesis: {
+    color: 'text-purple-600',
+    bg: 'bg-purple-50',
     border: 'border-purple-200',
-    icon: Sparkles, 
-    label: 'Synteza' 
+    icon: Sparkles,
+    label: 'Synteza'
+  },
+};
+
+// === NOWE: Konfiguracja dla typów kroków rozumowania ===
+const STEP_TYPE_CONFIG: Record<string, { color: string; bg: string; border: string; icon: React.ElementType; label: string }> = {
+  reasoning: {
+    color: 'text-indigo-600',
+    bg: 'bg-indigo-50',
+    border: 'border-indigo-200',
+    icon: Brain,
+    label: 'Krok Rozumowania'
+  },
+  correlation: {
+    color: 'text-orange-600',
+    bg: 'bg-orange-50',
+    border: 'border-orange-200',
+    icon: Activity,
+    label: 'Korelacja'
+  },
+  hypothesis: {
+    color: 'text-violet-600',
+    bg: 'bg-violet-50',
+    border: 'border-violet-200',
+    icon: Sparkles,
+    label: 'Hipoteza'
+  },
+  evidence: {
+    color: 'text-teal-600',
+    bg: 'bg-teal-50',
+    border: 'border-teal-200',
+    icon: FileText,
+    label: 'Dowód'
+  },
+  inference: {
+    color: 'text-rose-600',
+    bg: 'bg-rose-50',
+    border: 'border-rose-200',
+    icon: ArrowRight,
+    label: 'Wnioskowanie'
   },
 };
 
@@ -116,10 +205,16 @@ export default function ChainOfThought({
   }, []);
 
   const renderStepCard = (step: ThoughtStep, index: number) => {
-    const config = AGENT_CONFIG[step.agentType] || AGENT_CONFIG.orchestrator;
+    // Użyj STEP_TYPE_CONFIG dla nowych typów, fallback do AGENT_CONFIG
+    const stepTypeConfig = step.stepType && STEP_TYPE_CONFIG[step.stepType];
+    const config = stepTypeConfig || AGENT_CONFIG[step.agentType] || AGENT_CONFIG.orchestrator;
     const statusConfig = STATUS_CONFIG[step.status] || STATUS_CONFIG.thinking;
-    const AgentIcon = config.icon;
+    const StepIcon = config.icon;
     const StatusIcon = statusConfig.icon;
+
+    // Specjalne renderowanie dla inference (ścieżka rozumowania)
+    const isInference = step.stepType === 'inference';
+    const isCorrelation = step.stepType === 'correlation';
 
     return (
       <motion.div
@@ -130,40 +225,84 @@ export default function ChainOfThought({
         transition={{ delay: index * 0.05 }}
         className="relative group"
       >
-        <div 
+        <div
           onClick={() => setSelectedStep(step)}
           className={cn(
             "relative p-4 rounded-xl border bg-white transition-all cursor-pointer shadow-sm hover:shadow-md",
             config.border,
+            isInference && "border-l-4 border-l-rose-500",
+            isCorrelation && "border-l-4 border-l-orange-500",
             "hover:-translate-y-0.5"
           )}
         >
-          {/* Ozdobny pasek po lewej */}
-          <div className={cn("absolute left-0 top-0 bottom-0 w-1.5 rounded-l-xl", config.bg.replace('50', '500'))} />
+          {/* Ozdobny pasek po lewej (tylko jeśli nie jest inference/correlation) */}
+          {!isInference && !isCorrelation && (
+            <div className={cn("absolute left-0 top-0 bottom-0 w-1.5 rounded-l-xl", config.bg.replace('50', '500'))} />
+          )}
 
           <div className="flex items-start gap-3 pl-2">
             {/* Ikona */}
             <div className={cn("p-2 rounded-lg", config.bg)}>
-              <AgentIcon className={cn("w-5 h-5", config.color)} />
+              <StepIcon className={cn("w-5 h-5", config.color)} />
             </div>
 
             {/* Treść nagłówka */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between mb-1">
-                <span className={cn("text-[10px] font-bold uppercase tracking-wider", config.color)}>
-                  {config.label}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className={cn("text-[10px] font-bold uppercase tracking-wider", config.color)}>
+                    {config.label}
+                  </span>
+                  {step.stepNumber && step.totalSteps && (
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      [{step.stepNumber}/{step.totalSteps}]
+                    </span>
+                  )}
+                </div>
                 <span className="text-[10px] text-slate-400 flex items-center gap-1">
                   <Clock className="w-3 h-3" />
                   {step.timestamp.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                 </span>
               </div>
-              
+
               <h3 className="text-sm font-semibold text-slate-800 leading-tight mb-1 truncate pr-6">
                 {step.title}
               </h3>
 
-              <div className="flex items-center gap-2 mt-2">
+              {/* Specjalna sekcja dla inference - pokaż ścieżkę */}
+              {isInference && step.reasoningChain && step.reasoningChain.length > 0 && (
+                <div className="flex items-center gap-1 mt-1 text-[10px] text-rose-600 overflow-x-auto">
+                  {step.reasoningChain.slice(0, 3).map((chain, i) => (
+                    <span key={i} className="flex items-center gap-1">
+                      {i > 0 && <ArrowRight className="w-3 h-3 text-rose-400" />}
+                      <span className="bg-rose-50 px-1.5 py-0.5 rounded whitespace-nowrap">{chain}</span>
+                    </span>
+                  ))}
+                  {step.reasoningChain.length > 3 && (
+                    <span className="text-rose-400">+{step.reasoningChain.length - 3}</span>
+                  )}
+                </div>
+              )}
+
+              {/* Specjalna sekcja dla correlation */}
+              {isCorrelation && step.factA && step.factB && (
+                <div className="flex items-center gap-2 mt-1 text-[10px]">
+                  <span className="bg-orange-50 text-orange-700 px-1.5 py-0.5 rounded truncate max-w-[120px]">
+                    {step.factA}
+                  </span>
+                  <Activity className="w-3 h-3 text-orange-500" />
+                  <span className="bg-orange-50 text-orange-700 px-1.5 py-0.5 rounded truncate max-w-[120px]">
+                    {step.factB}
+                  </span>
+                  {step.correlationStrength && (
+                    <span className="font-bold text-orange-600">
+                      {Math.round(step.correlationStrength * 100)}%
+                    </span>
+                  )}
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
                 <div className={cn("flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full bg-slate-100", statusConfig.color)}>
                   <StatusIcon className="w-3 h-3" />
                   {statusConfig.label}
@@ -172,6 +311,15 @@ export default function ChainOfThought({
                   <div className="flex items-center gap-1 text-[11px] text-slate-500 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-100">
                     <FileText className="w-3 h-3" />
                     {step.documents.length} dok.
+                  </div>
+                )}
+                {step.confidence && (
+                  <div className={cn(
+                    "flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full",
+                    step.confidence > 0.7 ? "bg-emerald-50 text-emerald-700" :
+                    step.confidence > 0.4 ? "bg-amber-50 text-amber-700" : "bg-red-50 text-red-700"
+                  )}>
+                    {Math.round(step.confidence * 100)}%
                   </div>
                 )}
               </div>
@@ -351,28 +499,299 @@ export default function ChainOfThought({
                       <Search className="w-3 h-3" />
                       Analizowane źródła
                     </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 gap-3">
                       {selectedStep.documents.map((doc, idx) => (
                         <div 
                           key={idx}
-                          className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-lg hover:border-blue-300 transition-colors group"
+                          className="flex flex-col p-3 bg-white border border-slate-200 rounded-lg hover:border-blue-300 transition-colors group"
                         >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <FileText className="w-4 h-4 text-slate-400 group-hover:text-blue-500" />
-                            <span className="text-sm font-medium text-slate-700 truncate">
-                              {doc.title}
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <FileText className="w-4 h-4 text-slate-400 group-hover:text-blue-500" />
+                              <div className="flex flex-col min-w-0">
+                                <span className="text-sm font-medium text-slate-700 truncate" title={doc.title}>
+                                  {doc.title}
+                                </span>
+                                <span className="text-xs text-slate-500 truncate">
+                                  {doc.source} {doc.url ? `• ${doc.url}` : ''}
+                                </span>
+                              </div>
+                            </div>
+                            <span className={cn(
+                              "text-xs font-bold px-2 py-0.5 rounded",
+                              doc.relevance > 0.8 ? "bg-emerald-100 text-emerald-700" : 
+                              doc.relevance > 0.5 ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600"
+                            )}>
+                              {Math.round(doc.relevance * 100)}%
                             </span>
                           </div>
-                          <span className={cn(
-                            "text-xs font-bold px-2 py-0.5 rounded",
-                            doc.relevance > 0.8 ? "bg-emerald-100 text-emerald-700" : 
-                            doc.relevance > 0.5 ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600"
-                          )}>
-                            {Math.round(doc.relevance * 100)}%
-                          </span>
+                          
+                          {doc.credibility && (
+                            <div className="mt-2">
+                              <SourceCredibilityPanel credibility={doc.credibility} compact={true} />
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {/* Tagged Information Units Section (Feature 1.1) */}
+                {selectedStep.taggedInfo && selectedStep.taggedInfo.length > 0 && (
+                  <div className="mt-6 bg-indigo-50/50 rounded-xl p-5 border border-indigo-100">
+                    <h4 className="text-xs font-bold text-indigo-600 uppercase tracking-widest mb-3 flex items-center gap-2">
+                      <Tag className="w-3 h-3" />
+                      Zidentyfikowane Fakty i Dane
+                    </h4>
+                    <div className="grid grid-cols-1 gap-3">
+                      {selectedStep.taggedInfo.map((info, idx) => (
+                        <div
+                          key={info.id || idx}
+                          className={cn(
+                            "flex flex-col p-3 bg-white border rounded-lg shadow-sm transition-all",
+                            info.priority === 1 ? "border-l-4 border-l-red-500 border-y-red-100 border-r-red-100" :
+                            info.priority === 2 ? "border-l-4 border-l-amber-500 border-y-amber-100 border-r-amber-100" :
+                            "border-l-4 border-l-blue-400 border-y-slate-100 border-r-slate-100"
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className={cn(
+                                  "text-[10px] font-bold uppercase px-1.5 py-0.5 rounded",
+                                  info.fact_type === 'economic_indicator' ? "bg-emerald-100 text-emerald-700" :
+                                  info.fact_type === 'political_event' ? "bg-purple-100 text-purple-700" :
+                                  info.fact_type === 'statement' ? "bg-blue-100 text-blue-700" :
+                                  "bg-slate-100 text-slate-600"
+                                )}>
+                                  {info.fact_type.replace('_', ' ')}
+                                </span>
+                                {info.timestamp && (
+                                  <span className="text-[10px] text-slate-400 font-mono">
+                                    {info.timestamp}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-sm text-slate-800 leading-snug font-medium">
+                                {info.content}
+                              </p>
+
+                              {info.entities && info.entities.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                  {info.entities.map((entity, eIdx) => (
+                                    <span key={eIdx} className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded-full">
+                                      #{entity}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex flex-col items-end gap-1">
+                              <span className={cn(
+                                "text-[10px] font-bold px-2 py-0.5 rounded-full",
+                                info.priority === 1 ? "bg-red-100 text-red-700" :
+                                info.priority === 2 ? "bg-amber-100 text-amber-700" :
+                                "bg-blue-50 text-blue-600"
+                              )}>
+                                P{info.priority}
+                              </span>
+                              <span className="text-[10px] text-slate-400" title="Pewność">
+                                {Math.round(info.confidence * 100)}%
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* === NOWE: Sekcja Inference - Ścieżka od faktu do przewidywania === */}
+                {selectedStep.stepType === 'inference' && (
+                  <div className="mt-6 bg-rose-50/50 rounded-xl p-5 border border-rose-200">
+                    <h4 className="text-xs font-bold text-rose-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+                      <ArrowRight className="w-3 h-3" />
+                      Ścieżka Rozumowania: Fakt → Przewidywanie
+                    </h4>
+
+                    {/* Fakt historyczny (wejście) */}
+                    {selectedStep.historicalFact && (
+                      <div className="mb-4 p-3 bg-white border border-rose-100 rounded-lg">
+                        <div className="text-[10px] font-bold text-rose-500 uppercase mb-1">Fakt Źródłowy</div>
+                        <p className="text-sm text-slate-800 font-medium">{selectedStep.historicalFact}</p>
+                        <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-500">
+                          {selectedStep.historicalSource && (
+                            <span className="flex items-center gap-1">
+                              <FileText className="w-3 h-3" />
+                              {selectedStep.historicalSource}
+                            </span>
+                          )}
+                          {selectedStep.historicalDate && (
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {selectedStep.historicalDate}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Łańcuch rozumowania */}
+                    {selectedStep.reasoningChain && selectedStep.reasoningChain.length > 0 && (
+                      <div className="mb-4">
+                        <div className="text-[10px] font-bold text-rose-500 uppercase mb-2">Kroki Rozumowania</div>
+                        <div className="space-y-2">
+                          {selectedStep.reasoningChain.map((chain, idx) => (
+                            <div key={idx} className="flex items-start gap-2">
+                              <div className="flex-shrink-0 w-5 h-5 rounded-full bg-rose-100 text-rose-600 text-[10px] font-bold flex items-center justify-center">
+                                {idx + 1}
+                              </div>
+                              <div className="flex-1 p-2 bg-white border border-rose-100 rounded-lg text-sm text-slate-700">
+                                {chain}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Przewidywanie (wyjście) */}
+                    {selectedStep.prediction && (
+                      <div className="p-3 bg-rose-100 border border-rose-200 rounded-lg">
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="text-[10px] font-bold text-rose-700 uppercase">Przewidywanie</div>
+                          {selectedStep.predictionTimeframe && (
+                            <span className="text-[10px] bg-rose-200 text-rose-700 px-2 py-0.5 rounded-full font-medium">
+                              Horyzont: {selectedStep.predictionTimeframe}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-slate-800 font-semibold">{selectedStep.prediction}</p>
+                        {selectedStep.confidence && (
+                          <div className="mt-2 flex items-center gap-2">
+                            <span className="text-[10px] text-rose-600">Pewność:</span>
+                            <div className="flex-1 h-2 bg-rose-200 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-rose-500 rounded-full"
+                                style={{ width: `${selectedStep.confidence * 100}%` }}
+                              />
+                            </div>
+                            <span className="text-[10px] font-bold text-rose-700">
+                              {Math.round(selectedStep.confidence * 100)}%
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Kluczowe założenia */}
+                    {selectedStep.keyAssumptions && selectedStep.keyAssumptions.length > 0 && (
+                      <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                        <div className="text-[10px] font-bold text-amber-600 uppercase mb-2">Kluczowe Założenia</div>
+                        <ul className="space-y-1">
+                          {selectedStep.keyAssumptions.map((assumption, idx) => (
+                            <li key={idx} className="text-xs text-amber-800 flex items-start gap-2">
+                              <span className="text-amber-500">•</span>
+                              {assumption}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* === NOWE: Sekcja Correlation === */}
+                {selectedStep.stepType === 'correlation' && (
+                  <div className="mt-6 bg-orange-50/50 rounded-xl p-5 border border-orange-200">
+                    <h4 className="text-xs font-bold text-orange-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+                      <Activity className="w-3 h-3" />
+                      Zidentyfikowana Korelacja
+                    </h4>
+
+                    <div className="flex items-center gap-4 mb-4">
+                      <div className="flex-1 p-3 bg-white border border-orange-100 rounded-lg">
+                        <div className="text-[10px] font-bold text-orange-500 uppercase mb-1">Fakt A</div>
+                        <p className="text-sm text-slate-800">{selectedStep.factA}</p>
+                      </div>
+                      <div className="flex flex-col items-center">
+                        <Activity className="w-6 h-6 text-orange-500" />
+                        {selectedStep.correlationType && (
+                          <span className={cn(
+                            "text-[10px] font-bold px-2 py-0.5 rounded-full mt-1",
+                            selectedStep.correlationType === 'positive' && "bg-emerald-100 text-emerald-700",
+                            selectedStep.correlationType === 'negative' && "bg-red-100 text-red-700",
+                            selectedStep.correlationType === 'causal' && "bg-purple-100 text-purple-700",
+                            selectedStep.correlationType === 'temporal' && "bg-blue-100 text-blue-700"
+                          )}>
+                            {selectedStep.correlationType}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex-1 p-3 bg-white border border-orange-100 rounded-lg">
+                        <div className="text-[10px] font-bold text-orange-500 uppercase mb-1">Fakt B</div>
+                        <p className="text-sm text-slate-800">{selectedStep.factB}</p>
+                      </div>
+                    </div>
+
+                    {selectedStep.correlationStrength && (
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-[10px] text-orange-600">Siła korelacji:</span>
+                        <div className="flex-1 h-2 bg-orange-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-orange-500 rounded-full"
+                            style={{ width: `${selectedStep.correlationStrength * 100}%` }}
+                          />
+                        </div>
+                        <span className="text-[10px] font-bold text-orange-700">
+                          {Math.round(selectedStep.correlationStrength * 100)}%
+                        </span>
+                      </div>
+                    )}
+
+                    {selectedStep.explanation && (
+                      <div className="p-3 bg-white border border-orange-100 rounded-lg">
+                        <div className="text-[10px] font-bold text-orange-500 uppercase mb-1">Wyjaśnienie</div>
+                        <p className="text-sm text-slate-700">{selectedStep.explanation}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* === NOWE: Sekcja Hypothesis === */}
+                {selectedStep.stepType === 'hypothesis' && (
+                  <div className="mt-6 bg-violet-50/50 rounded-xl p-5 border border-violet-200">
+                    <h4 className="text-xs font-bold text-violet-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+                      <Sparkles className="w-3 h-3" />
+                      Hipoteza
+                    </h4>
+
+                    <div className="p-3 bg-white border border-violet-100 rounded-lg mb-3">
+                      <p className="text-sm text-slate-800 font-medium">{selectedStep.hypothesis}</p>
+                    </div>
+
+                    {selectedStep.basis && (
+                      <div className="p-3 bg-violet-100/50 border border-violet-200 rounded-lg mb-3">
+                        <div className="text-[10px] font-bold text-violet-600 uppercase mb-1">Podstawa</div>
+                        <p className="text-sm text-slate-700">{selectedStep.basis}</p>
+                      </div>
+                    )}
+
+                    {selectedStep.testablePredictions && selectedStep.testablePredictions.length > 0 && (
+                      <div className="p-3 bg-white border border-violet-100 rounded-lg">
+                        <div className="text-[10px] font-bold text-violet-600 uppercase mb-2">Testowalne Przewidywania</div>
+                        <ul className="space-y-1">
+                          {selectedStep.testablePredictions.map((pred, idx) => (
+                            <li key={idx} className="text-xs text-slate-700 flex items-start gap-2">
+                              <CheckCircle className="w-3 h-3 text-violet-500 mt-0.5" />
+                              {pred}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

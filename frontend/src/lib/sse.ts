@@ -10,7 +10,8 @@ import {
   StreamEvent, 
   ReportSectionType,
   RegionCode,
-  SourceCode
+  SourceCode,
+  ChartData
 } from '@/types/schemas';
 import { AnalysisConfig as RegionAnalysisConfig } from '@/types/regions';
 
@@ -29,6 +30,7 @@ export interface ScenarioReport {
   title: string;
   content: string;
   confidence: number;
+  chartData?: ChartData | null;
 }
 
 export type SSECallback = (event: StreamEvent) => void;

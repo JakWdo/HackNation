@@ -4,10 +4,13 @@ FastAPI Main - główny entry point aplikacji.
 Uruchomienie:
     uvicorn main:app --reload --host 0.0.0.0 --port 8000
 """
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes import router as api_router
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="sedno",
@@ -32,6 +35,35 @@ app.add_middleware(
 
 # Dołącz router API
 app.include_router(api_router)
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Event wykonywany przy starcie aplikacji - walidacja systemu."""
+    logger.info("=" * 60)
+    logger.info("Sedno API - uruchamianie...")
+    logger.info("=" * 60)
+
+    # Walidacja ChromaDB
+    try:
+        from services.rag.vector_store import get_vector_store_manager
+        vsm = get_vector_store_manager()
+        stats = vsm.get_collection_stats()
+
+        doc_count = stats.get("count", 0)
+
+        if doc_count == 0:
+            logger.warning("⚠️  BAZA WEKTOROWA PUSTA!")
+            logger.warning("    Załaduj dane używając: python scripts/load_data.py")
+        else:
+            logger.info(f"✅ ChromaDB: {doc_count} dokumentów gotowych")
+
+    except Exception as e:
+        logger.error(f"❌ Błąd sprawdzania ChromaDB: {e}")
+
+    logger.info("=" * 60)
+    logger.info("✓ Aplikacja gotowa")
+    logger.info("=" * 60)
 
 
 @app.get("/")

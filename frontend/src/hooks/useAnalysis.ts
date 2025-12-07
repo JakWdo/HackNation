@@ -18,6 +18,7 @@ import {
 } from '@/lib/sse';
 import { AnalysisConfig } from '@/types/regions';
 import type { ThoughtStep } from '@/components/ui/ChainOfThought';
+import { InformationUnit, ChartData } from '@/types/schemas';
 
 interface UseAnalysisReturn {
   // Stan
@@ -26,6 +27,7 @@ interface UseAnalysisReturn {
   scenarios: ScenarioReport[];
   error: string | null;
   sessionId: string | null;
+  progress: number;
 
   // Akcje
   startAnalysis: (query: string, config: AnalysisConfig) => Promise<void>;
@@ -39,6 +41,7 @@ export function useAnalysis(): UseAnalysisReturn {
   const [scenarios, setScenarios] = useState<ScenarioReport[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [progress, setProgress] = useState<number>(0);
 
   const stepIdCounter = useRef(0);
 
@@ -56,6 +59,7 @@ export function useAnalysis(): UseAnalysisReturn {
     const baseStep = {
       id: String(++stepIdCounter.current),
       timestamp: new Date(event.timestamp || Date.now()),
+      taggedInfo: event.tagged_info ? (event.tagged_info as unknown as InformationUnit[]) : undefined,
     };
 
     switch (event.type) {
@@ -65,6 +69,7 @@ export function useAnalysis(): UseAnalysisReturn {
           agent: event.agent || 'unknown',
           agentType: getAgentType(event.agent),
           status: 'thinking' as const,
+          stepType: 'thinking',
           title: getAgentDisplayName(event.agent),
           content: event.content || '',
         };
@@ -80,6 +85,9 @@ export function useAnalysis(): UseAnalysisReturn {
           documents: event.docs?.map((d) => ({
             title: d.title,
             relevance: d.relevance,
+            source: d.source || 'unknown',
+            url: d.url,
+            credibility: d.credibility,
           })),
         };
 
@@ -94,7 +102,6 @@ export function useAnalysis(): UseAnalysisReturn {
         };
 
       case 'report':
-        // Sekcje raportu - wyświetl jako step
         return {
           ...baseStep,
           agent: 'synthesis',
@@ -102,6 +109,93 @@ export function useAnalysis(): UseAnalysisReturn {
           status: 'complete' as const,
           title: `Raport: ${event.section || 'Sekcja'}`,
           content: event.content?.substring(0, 200) + '...' || '',
+        };
+
+      // === NOWE: Rozbudowane typy dla Chain of Thought ===
+
+      case 'reasoning':
+        return {
+          ...baseStep,
+          agent: event.agent || 'system',
+          agentType: getAgentType(event.agent),
+          status: 'analyzing' as const,
+          stepType: 'reasoning',
+          title: event.step_title || 'Krok rozumowania',
+          content: event.reasoning || event.content || '',
+          stepNumber: event.step_number || undefined,
+          totalSteps: event.total_steps || undefined,
+          confidence: event.confidence || undefined,
+          evidence: event.evidence?.map((e: Record<string, unknown>) => ({
+            content: String(e.content || ''),
+            source: String(e.source || ''),
+            weight: Number(e.weight || 0.5),
+          })),
+        };
+
+      case 'correlation':
+        return {
+          ...baseStep,
+          agent: event.agent || 'system',
+          agentType: getAgentType(event.agent),
+          status: 'complete' as const,
+          stepType: 'correlation',
+          title: 'Zidentyfikowana korelacja',
+          content: event.explanation || '',
+          factA: event.fact_a || undefined,
+          factB: event.fact_b || undefined,
+          correlationType: event.correlation_type || undefined,
+          correlationStrength: event.strength || undefined,
+          sources: event.sources || undefined,
+        };
+
+      case 'hypothesis':
+        return {
+          ...baseStep,
+          agent: event.agent || 'system',
+          agentType: getAgentType(event.agent),
+          status: 'analyzing' as const,
+          stepType: 'hypothesis',
+          title: 'Hipoteza',
+          content: event.hypothesis || event.content || '',
+          hypothesis: event.hypothesis || undefined,
+          basis: event.basis || undefined,
+          testablePredictions: event.testable_predictions || undefined,
+          confidence: event.confidence || undefined,
+        };
+
+      case 'evidence':
+        return {
+          ...baseStep,
+          agent: event.agent || 'system',
+          agentType: getAgentType(event.agent),
+          status: 'complete' as const,
+          stepType: 'evidence',
+          title: event.evidence_type === 'supporting' ? 'Dowód wspierający' : 'Dowód podważający',
+          content: event.content || '',
+          hypothesisRef: event.hypothesis_ref || undefined,
+          evidenceType: event.evidence_type || undefined,
+          impact: event.impact || undefined,
+          weight: event.weight || undefined,
+        };
+
+      case 'inference':
+        // KLUCZOWY typ dla wyjaśnialności - ścieżka od faktu do przewidywania
+        return {
+          ...baseStep,
+          agent: event.agent || 'system',
+          agentType: getAgentType(event.agent),
+          status: 'complete' as const,
+          stepType: 'inference',
+          title: 'Wnioskowanie: Fakt → Przewidywanie',
+          content: event.prediction || event.content || '',
+          historicalFact: event.historical_fact || undefined,
+          historicalSource: event.historical_source || undefined,
+          historicalDate: event.historical_date || undefined,
+          prediction: event.prediction || undefined,
+          predictionTimeframe: event.prediction_timeframe || undefined,
+          reasoningChain: event.reasoning_chain || undefined,
+          keyAssumptions: event.key_assumptions || undefined,
+          confidence: event.confidence || undefined,
         };
 
       case 'error':
@@ -136,6 +230,15 @@ export function useAnalysis(): UseAnalysisReturn {
     (event: SSEEvent) => {
       console.log('[useAnalysis] Event:', event.type, event.agent);
 
+      // Aktualizacja postępu
+      if (event.type === 'progress' && typeof event.progress === 'number') {
+        setProgress(event.progress);
+      }
+      // Force progress 100% on done
+      if (event.type === 'done') {
+        setProgress(100);
+      }
+
       // Scenariusze idą do osobnego stanu
       if (event.type === 'scenario') {
         const timeframe = (event.timeframe || '12m') as '12m' | '36m';
@@ -147,6 +250,7 @@ export function useAnalysis(): UseAnalysisReturn {
           title: event.title || 'Scenariusz',
           content: event.content || '',
           confidence: event.confidence || 0.5,
+          chartData: event.chart_data ? (event.chart_data as unknown as ChartData) : null,
         };
         setScenarios((prev) => [...prev, scenario]);
         return;
@@ -181,6 +285,7 @@ export function useAnalysis(): UseAnalysisReturn {
     async (query: string, config: AnalysisConfig) => {
       // Reset stanu
       setIsAnalyzing(true);
+      setProgress(0);
       setError(null);
       setThoughtSteps([]);
       setScenarios([]);
@@ -228,6 +333,7 @@ export function useAnalysis(): UseAnalysisReturn {
     setScenarios([]);
     setError(null);
     setSessionId(null);
+    setProgress(0);
     stepIdCounter.current = 0;
   }, []);
 
@@ -237,6 +343,7 @@ export function useAnalysis(): UseAnalysisReturn {
     scenarios,
     error,
     sessionId,
+    progress,
     startAnalysis,
     stopAnalysis,
     clearResults,

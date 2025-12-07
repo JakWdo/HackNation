@@ -11,6 +11,7 @@ import logging
 from .vector_store import VectorStoreManager, get_vector_store_manager
 from .embeddings import EmbeddingService
 from services.web_search_engine import WebSearchEngine
+from services.security import get_security_service
 from schemas.schemas import DocumentMetadata
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,7 @@ class HybridSearchResult:
             "country": self.metadata.country,
             "url": self.metadata.url,
             "date": self.metadata.date,
+            "credibility": self.metadata.credibility.model_dump() if self.metadata.credibility else None,
             "relevance_score": self.relevance_score,
             "source_type": self.source_type,
         }
@@ -76,6 +78,7 @@ class HybridSearchService:
         self._embedding_service = embedding_service or EmbeddingService()
         self._vector_store = vector_store or get_vector_store_manager()
         self._web_search = web_search or WebSearchEngine()
+        self._security_service = get_security_service()
 
         logger.info("HybridSearchService zainicjalizowany")
 
@@ -253,14 +256,20 @@ class HybridSearchService:
 
                     relevance = max(0.0, min(1.0, 1.0 - distance))
 
+                    # Ocena wiarygodności
+                    source_name = metadata_dict.get("source", "unknown")
+                    url = metadata_dict.get("url")
+                    credibility = self._security_service.evaluate_credibility(source_name, url, doc)
+
                     results.append(HybridSearchResult(
                         content=doc,
                         metadata=DocumentMetadata(
-                            source=metadata_dict.get("source", "unknown"),
+                            source=source_name,
                             date=metadata_dict.get("date"),
                             region=metadata_dict.get("region"),
                             country=metadata_dict.get("country"),
-                            url=metadata_dict.get("url"),
+                            url=url,
+                            credibility=credibility
                         ),
                         relevance_score=relevance,
                         source_type="vector_store"
@@ -283,9 +292,22 @@ class HybridSearchService:
             raw_results = self._web_search.search_web_for_rag(query)
 
             results = []
-            for i, content in enumerate(raw_results[:n_results]):
+            for i, doc in enumerate(raw_results[:n_results]):
                 # Web search ma niższy base score (0.6) malejący z pozycją
                 relevance = max(0.3, 0.6 - (i * 0.05))
+
+                # Wyciągnij pola ze słownika
+                content = doc.get("content", "")
+                url = doc.get("url")
+                title = doc.get("title", "")
+                date = doc.get("date")
+
+                # Ocena wiarygodności dla wyników z web search
+                credibility = self._security_service.evaluate_credibility(
+                    "web_search",
+                    url,
+                    content
+                )
 
                 results.append(HybridSearchResult(
                     content=content,
@@ -293,8 +315,10 @@ class HybridSearchService:
                         source="web_search",
                         region=None,
                         country=None,
-                        url=None,
-                        date=None,
+                        url=url,
+                        title=title,
+                        date=date,
+                        credibility=credibility
                     ),
                     relevance_score=relevance,
                     source_type="web_search"

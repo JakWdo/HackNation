@@ -47,6 +47,8 @@
     --color-text-on-dark: #ffffff;
 
     --color-border: rgba(255,255,255, 0.1);
+    
+    --color-cyan: #00d4ff;
   }
 
   .dark {
@@ -88,4 +90,104 @@
     @apply bg-background text-foreground;
     font-family: 'Inter', sans-serif;
   }
+}
+
+/* Custom styles for map badges */
+.badge-cyan {
+  @apply bg-[#00d4ff]/20 text-[#005f73] border border-[#00d4ff]/40 px-2 py-0.5 rounded-full font-bold text-xs;
+}
+.badge-vintage {
+  @apply bg-white/10 text-slate-600 border border-slate-200 px-2 py-0.5 rounded text-xs;
+}
+
+.glass-card {
+  @apply bg-white/80 backdrop-blur-md border border-white/20 shadow-lg rounded-xl;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease-out forwards;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* PRINT STYLES FOR PDF EXPORT */
+@media print {
+  /* Hide non-printable elements */
+  header, 
+  aside, /* Sidebar */
+  .map-container, /* Assuming map container class */
+  button, /* Hide all buttons */
+  .chain-of-thought-panel, /* Hide CoT */
+  .prompt-panel, /* Hide prompt */
+  .no-print {
+    display: none !important;
+  }
+
+  /* Reset layout for printing */
+  body, main, div {
+    overflow: visible !important;
+    height: auto !important;
+    width: auto !important;
+    position: static !important;
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Report Panel specific styling */
+  .report-content {
+    display: block !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Typography for print */
+  h1 {
+    font-size: 24pt !important;
+    color: black !important;
+    margin-bottom: 20px !important;
+  }
+  
+  h2 {
+    font-size: 18pt !important;
+    color: #333 !important;
+    border-bottom: 1px solid #ccc !important;
+    margin-top: 20px !important;
+  }
+
+  p, li {
+    font-size: 11pt !important;
+    line-height: 1.5 !important;
+    color: #000 !important;
+  }
+
+  /* Charts */
+  .recharts-responsive-container {
+    height: 300px !important;
+    width: 100% !important;
+    page-break-inside: avoid;
+  }
+  
+  /* Header for print (custom added via JS or visible only in print) */
+  .print-header {
+    display: block !important;
+    text-align: center;
+    margin-bottom: 30px;
+    border-bottom: 2px solid black;
+    padding-bottom: 10px;
+  }
+  
+  .print-logo {
+    font-size: 20pt;
+    font-weight: bold;
+    text-transform: uppercase;
+  }
+}
+
+/* Hide print header on screen */
+.print-header {
+  display: none;
 }

@@ -18,6 +18,9 @@ import PromptPanel from '@/components/ui/PromptPanel';
 import ChainOfThought from '@/components/ui/ChainOfThought';
 import ReportPanel from '@/components/ui/ReportPanel';
 import HistoryPanel from '@/components/ui/HistoryPanel';
+import ReasoningPathViewer from '@/components/ui/ReasoningPathViewer';
+import OnboardingTour, { shouldShowOnboarding } from '@/components/ui/OnboardingTour';
+import ProgressBar, { createAnalysisPhases, AnalysisPhase } from '@/components/ui/ProgressBar';
 import { useAnalysis } from '@/hooks/useAnalysis';
 import { useAnalysisHistory, SavedAnalysis } from '@/hooks/useAnalysisHistory';
 import type { AnalysisConfig } from '@/types/regions';
@@ -53,6 +56,8 @@ export default function Home() {
   const [showRightPanel, setShowRightPanel] = useState(true);
   const [currentQuery, setCurrentQuery] = useState<string>('');
   const [selectedHistoryAnalysis, setSelectedHistoryAnalysis] = useState<SavedAnalysis | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(shouldShowOnboarding());
+  const [analysisPhasesToShow, setAnalysisPhasesToShow] = useState<AnalysisPhase[]>(createAnalysisPhases());
 
   // 🆕 Hook do analizy z prawdziwym SSE
   const {
@@ -63,6 +68,7 @@ export default function Home() {
     startAnalysis,
     stopAnalysis,
     clearResults,
+    progress,
   } = useAnalysis();
 
   // 🆕 Hook do historii analiz
@@ -159,8 +165,15 @@ export default function Home() {
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-[var(--color-bg-primary)]">
+      {/* Onboarding Tour */}
+      <OnboardingTour
+        isOpen={showOnboarding}
+        onClose={() => setShowOnboarding(false)}
+        onSkip={() => setShowOnboarding(false)}
+      />
+
       {/* Nagłówek */}
-      <Header />
+      <Header isAnalyzing={isAnalyzing} progress={progress} />
 
       {/* Główna zawartość - 3 kolumny */}
       <main className="flex-1 flex overflow-hidden">
@@ -258,8 +271,37 @@ export default function Home() {
         </div>
 
         {/* Prawa kolumna - Chain of Thought */}
-        <div className="w-96 border-l border-[var(--color-border)] flex flex-col">
-          <ChainOfThought steps={thoughtSteps} isProcessing={isAnalyzing} />
+        <div className="w-96 border-l border-[var(--color-border)] flex flex-col overflow-y-auto">
+          {/* Progress Bar podczas analizy */}
+          {isAnalyzing && (
+            <div className="p-4 border-b border-[var(--color-border)] bg-blue-50/30">
+              <ProgressBar
+                phases={analysisPhasesToShow}
+                overallProgress={progress}
+                startTime={Date.now()}
+                isAnalyzing={isAnalyzing}
+              />
+            </div>
+          )}
+
+          {/* Reasoning Path Viewer */}
+          {thoughtSteps.length > 0 && (
+            <div className="p-4 border-b border-[var(--color-border)] bg-white/50">
+              <ReasoningPathViewer
+                steps={thoughtSteps}
+                onDocumentClick={(doc) => {
+                  if (doc.url) {
+                    window.open(doc.url, '_blank');
+                  }
+                }}
+              />
+            </div>
+          )}
+
+          {/* Chain of Thought */}
+          <div className="flex-1 overflow-y-auto">
+            <ChainOfThought steps={thoughtSteps} isProcessing={isAnalyzing} />
+          </div>
 
           {/* Przycisk do zatrzymania */}
           {isAnalyzing && (

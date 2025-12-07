@@ -7,6 +7,8 @@ import type { AnalysisConfig, Sector } from '@/types/regions';
 import { ChevronDown, Check, Activity, Globe, Building2, PieChart } from 'lucide-react';
 // Activity używany w sekcji Wagi
 import { cn } from '@/lib/utils';
+import { AtlantisContextPanel } from './AtlantisContextPanel';
+import ContextualTooltip, { TOOLTIPS, LabelWithTooltip } from '@/components/ui/ContextualTooltip';
 
 // === COMPONENTS ===
 
@@ -61,23 +63,34 @@ const SectionHeader = memo(function SectionHeader({
   count,
   isExpanded,
   onClick,
-  icon: Icon
+  icon: Icon,
+  tooltip
 }: {
   title: string;
   count?: number;
   isExpanded: boolean;
   onClick: () => void;
   icon?: React.ElementType;
+  tooltip?: { title: string; description: string };
 }) {
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center justify-between p-4 hover:bg-white/5 transition-colors border-b border-white/5 last:border-0"
+      className="w-full flex items-center justify-between p-4 hover:bg-white/5 transition-colors border-b border-white/5 last:border-0 group"
     >
       <div className="flex items-center gap-3">
         {Icon && <Icon className="w-4 h-4 text-blue-300" />}
-        <span className="text-sm font-semibold text-white tracking-wide">
+        <span className="text-sm font-semibold text-white tracking-wide flex items-center gap-2">
           {title}
+          {tooltip && (
+            <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+              <ContextualTooltip
+                title={tooltip.title}
+                description={tooltip.description}
+                side="right"
+              />
+            </div>
+          )}
         </span>
         {count !== undefined && count > 0 && (
           <span className="bg-blue-500/20 text-blue-200 text-[10px] font-bold px-2 py-0.5 rounded-full border border-blue-500/30">
@@ -201,6 +214,11 @@ export default function AnalysisSidebar({
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent px-2">
+        {/* Feature 2.2: Atlantis Context Panel */}
+        <div className="px-2 pt-2">
+          <AtlantisContextPanel />
+        </div>
+
         {/* Regions */}
         <div>
           <SectionHeader
@@ -209,6 +227,7 @@ export default function AnalysisSidebar({
             isExpanded={expandedSections.regions}
             onClick={() => toggleSection('regions')}
             icon={Globe}
+            tooltip={TOOLTIPS.regions}
           />
           <AnimatePresence initial={false}>
             {expandedSections.regions && (
@@ -244,6 +263,7 @@ export default function AnalysisSidebar({
             isExpanded={expandedSections.organizations}
             onClick={() => toggleSection('organizations')}
             icon={Building2}
+            tooltip={TOOLTIPS.countries}
           />
           <AnimatePresence initial={false}>
             {expandedSections.organizations && (
@@ -279,6 +299,7 @@ export default function AnalysisSidebar({
             isExpanded={expandedSections.sectors}
             onClick={() => toggleSection('sectors')}
             icon={PieChart}
+            tooltip={TOOLTIPS.sectors}
           />
           <AnimatePresence initial={false}>
             {expandedSections.sectors && (
@@ -345,6 +366,7 @@ export default function AnalysisSidebar({
             isExpanded={expandedSections.weights}
             onClick={() => toggleSection('weights')}
             icon={Activity}
+            tooltip={TOOLTIPS.weights}
           />
           <AnimatePresence initial={false}>
             {expandedSections.weights && (

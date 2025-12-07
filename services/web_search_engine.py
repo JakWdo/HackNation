@@ -4,7 +4,8 @@ Web Search Engine - wyszukiwanie w internecie.
 Używa DuckDuckGo do wyszukiwania informacji w czasie rzeczywistym.
 Przetwarzanie dokumentów i baza wektorowa przeniesione do services/rag/.
 """
-from typing import List
+from typing import List, Dict, Any, Optional
+from datetime import datetime
 import logging
 import re
 
@@ -48,25 +49,44 @@ class WebSearchEngine:
             logger.error(f"Błąd web search: {e}")
             return ""
 
-    def search_web_for_rag(self, query: str) -> List[str]:
+    def search_web_for_rag(self, query: str) -> List[Dict[str, Any]]:
         """
-        Wyszukuje w internecie i zwraca listę fragmentów dla RAG.
+        Wyszukuje w internecie i zwraca listę dokumentów z metadanymi dla RAG.
 
         Args:
             query: Zapytanie tekstowe
 
         Returns:
-            Lista fragmentów tekstu z wyników wyszukiwania
+            Lista słowników z polami: url, title, content, date, snippet
         """
         result = self.search_web(query)
 
         if not result:
             return []
 
-        # Podziel wynik na fragmenty (po podwójnych newline'ach lub długich fragmentach)
+        # Podziel wynik na fragmenty
         fragments = self._split_into_fragments(result)
 
-        return fragments
+        # Wyciągnij URL-e z wyniku
+        urls = self.get_search_urls(query)
+
+        # Parsuj fragmenty na dokumenty z metadanymi
+        documents = []
+        for idx, fragment in enumerate(fragments):
+            # Każdy fragment to osobny dokument
+            url = urls[idx] if idx < len(urls) else None
+            title = self._extract_title_from_fragment(fragment)
+
+            documents.append({
+                "url": url,
+                "title": title,
+                "content": fragment,
+                "snippet": fragment[:200],  # Pierwsze 200 znaków jako snippet
+                "date": datetime.now().isoformat(),  # Web search nie ma konkretnej daty
+                "source": "web_search"
+            })
+
+        return documents
 
     def get_search_urls(self, query: str) -> List[str]:
         """
@@ -145,6 +165,27 @@ class WebSearchEngine:
             fragments = [text[:max_fragment_length]]
 
         return fragments
+
+    def _extract_title_from_fragment(self, fragment: str) -> str:
+        """
+        Próbuje wyciągnąć tytuł z fragmentu tekstu.
+
+        Args:
+            fragment: Fragment tekstu
+
+        Returns:
+            Tytuł (pierwsze zdanie lub pierwsze 60 znaków)
+        """
+        if not fragment:
+            return "Web Search Result"
+
+        # Pierwsze zdanie (max 100 znaków)
+        first_line = fragment.split('\n')[0].strip()
+
+        if len(first_line) > 100:
+            return first_line[:97] + "..."
+
+        return first_line if first_line else "Web Search Result"
 
 
 # Singleton instancja

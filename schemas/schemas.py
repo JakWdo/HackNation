@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional, Annotated, Sequence
 from enum import Enum
 from datetime import datetime
 import operator
+import uuid
 
 from pydantic import BaseModel, Field
 from langchain_core.messages import BaseMessage
@@ -33,6 +34,22 @@ class ReportSectionType(str, Enum):
     ECONOMY = "GOSPODARKA"
     DEFENSE = "OBRONNOŚĆ"
     SOCIETY = "SPOŁECZEŃSTWO"
+
+
+class CredibilityLevel(str, Enum):
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+    SUSPICIOUS = "suspicious"
+
+
+class CredibilityScore(BaseModel):
+    """Ocena wiarygodności źródła."""
+    score: float = Field(..., description="0.0 to 1.0")
+    level: CredibilityLevel
+    reasoning: str
+    verified: bool = False
+    flags: List[str] = Field(default_factory=list)
 
 
 # === STAN AGENTÓW (LangGraph) ===
@@ -139,12 +156,12 @@ class SessionStatusResponse(BaseModel):
 
 
 class StreamEvent(BaseModel):
-    """Event do streamingu."""
+    """Event do streamingu - rozszerzony dla features 1.1-1.3."""
     type: str
     agent: Optional[str] = None
     content: str
     timestamp: Optional[str] = None
-    
+
     # Dodatkowe pola dla różnych typów zdarzeń
     query: Optional[str] = None
     docs: Optional[List[Dict[str, Any]]] = None
@@ -157,16 +174,38 @@ class StreamEvent(BaseModel):
     session_id: Optional[str] = None
     result: Optional[Dict[str, Any]] = None
 
+    # NOWE dla feature 1.1 - Tagowanie
+    tagged_info: Optional[List[Dict[str, Any]]] = Field(None, description="Lista InformationUnit jako dict")
+
+    # NOWE dla feature 1.2 - Ścieżka rozumowania
+    reasoning_step: Optional[Dict[str, Any]] = Field(None, description="ReasoningStep jako dict")
+
+    # NOWE dla feature 1.3 - Wykresy
+    chart_data: Optional[Dict[str, Any]] = Field(None, description="ChartData jako dict")
+
 
 # === DOKUMENTY ===
 
 class DocumentMetadata(BaseModel):
-    """Metadane dokumentu."""
+    """Metadane dokumentu - rozszerzone dla feature 1.2."""
+    # Podstawowe pola
     source: str
     date: Optional[str] = None
     region: Optional[str] = None
     country: Optional[str] = None
     url: Optional[str] = None
+    credibility: Optional[CredibilityScore] = None
+
+    # NOWE pola dla feature 1.2 - Ścieżka rozumowania z linkami
+    title: str = ""
+    snippet: Optional[str] = None  # Fragment tekstu (200-300 znaków) z highlighted terms
+    author: Optional[str] = None
+    published_date: Optional[str] = None  # ISO format
+    document_type: Optional[str] = None  # "report", "article", "statement", etc.
+    relevance_score: float = 0.0
+
+    # NOWE dla feature 1.1 - powiązania z tagami
+    related_tags: List[str] = Field(default_factory=list)  # Lista ID tagów związanych z tym dokumentem
 
 
 class SearchResult(BaseModel):
@@ -174,6 +213,53 @@ class SearchResult(BaseModel):
     content: str
     metadata: DocumentMetadata
     relevance_score: float = 0.0
+
+
+class InformationUnit(BaseModel):
+    """Jednostka informacji - otagowany fakt."""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    content: str = Field(..., description="Treść faktu, np. 'Cena ropy Brent: $85/baryłka (2024-11-15)'")
+    fact_type: str = Field(..., description="Typ: economic_indicator, political_event, statement, statistic, other")
+    source_doc_ids: List[str] = Field(default_factory=list, description="IDs dokumentów źródłowych")
+    confidence: float = Field(default=0.8, ge=0.0, le=1.0)
+    priority: int = Field(default=2, ge=1, le=3, description="1=high, 2=medium, 3=low")
+    timestamp: Optional[str] = None
+
+    # Powiązania z wnioskami/rekomendacjami
+    impacts: List[str] = Field(default_factory=list, description="IDs wniosków na które wpływa ten fakt")
+
+    # Metadane dla wizualizacji
+    region: Optional[str] = None
+    sector: Optional[str] = None
+    entities: List[str] = Field(default_factory=list, description="Podmioty, np. ['Russia', 'OPEC', 'oil_price']")
+
+
+class ReasoningStep(BaseModel):
+    """Krok rozumowania w Chain of Thought."""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    agent: str
+    agent_type: str = Field(..., description="orchestrator, regional, country, sector, synthesis")
+    content: str = Field(..., description="Treść myśli/wniosku")
+
+    # NOWE - powiązania
+    source_docs: List[DocumentMetadata] = Field(default_factory=list, description="Dokumenty użyte w tym kroku")
+    source_tags: List[str] = Field(default_factory=list, description="IDs tagów (InformationUnit)")
+    leads_to: List[str] = Field(default_factory=list, description="IDs następnych kroków rozumowania")
+
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+    status: str = Field(default="complete", description="thinking, searching, analyzing, complete, error")
+
+
+class ChartData(BaseModel):
+    """Dane do wizualizacji wykresów."""
+    chart_type: str = Field(..., description="line, bar, pie, area")
+    title: str
+    data: List[Dict[str, Any]] = Field(..., description="Format zależny od chart_type")
+
+    # Etykiety osi
+    x_axis_label: Optional[str] = None
+    y_axis_label: Optional[str] = None
+    unit: Optional[str] = Field(None, description="Jednostka: $bn, %, million, etc.")
 
 
 # === ROUTING ===

@@ -51,6 +51,7 @@ def search_vector_store(
         - country: Kraj dokumentu
         - relevance_score: Ocena trafności (0-1)
         - source_type: Typ źródła (vector_store/web_search)
+        - credibility: Ocena wiarygodności
     """
     try:
         service = get_search_service()
@@ -61,18 +62,7 @@ def search_vector_store(
             strategy=SearchStrategy.HYBRID
         )
 
-        return [
-            {
-                "content": r.content,
-                "source": r.metadata.source,
-                "region": r.metadata.region,
-                "country": r.metadata.country,
-                "url": r.metadata.url,
-                "relevance_score": round(r.relevance_score, 3),
-                "source_type": r.source_type,
-            }
-            for r in results
-        ]
+        return [r.to_dict() for r in results]
 
     except Exception as e:
         logger.error(f"Błąd search_vector_store: {e}")
@@ -129,15 +119,7 @@ def search_by_source(
             n_results=limit
         )
 
-        return [
-            {
-                "content": r.content,
-                "source": r.metadata.source,
-                "relevance_score": round(r.relevance_score, 3),
-                "url": r.metadata.url,
-            }
-            for r in results
-        ]
+        return [r.to_dict() for r in results]
 
     except Exception as e:
         logger.error(f"Błąd search_by_source: {e}")
@@ -169,15 +151,7 @@ def search_by_country(
             n_results=limit
         )
 
-        return [
-            {
-                "content": r.content,
-                "country": r.metadata.country,
-                "source": r.metadata.source,
-                "relevance_score": round(r.relevance_score, 3),
-            }
-            for r in results
-        ]
+        return [r.to_dict() for r in results]
 
     except Exception as e:
         logger.error(f"Błąd search_by_country: {e}")
@@ -212,15 +186,7 @@ def web_search_realtime(
             n_results=limit
         )
 
-        return [
-            {
-                "content": r.content,
-                "source": "web_search",
-                "relevance_score": round(r.relevance_score, 3),
-                "source_type": "web_search",
-            }
-            for r in results
-        ]
+        return [r.to_dict() for r in results]
 
     except Exception as e:
         logger.error(f"Błąd web_search_realtime: {e}")

@@ -7,6 +7,24 @@
 
 import { useState, useMemo } from 'react';
 import type { ScenarioReport } from '@/lib/sse';
+import { ChartData } from '@/types/schemas';
+import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  AreaChart,
+  Area
+} from 'recharts';
 
 interface ReportPanelProps {
   scenarios: ScenarioReport[];
@@ -102,16 +120,31 @@ export default function ReportPanel({ scenarios, onClose }: ReportPanelProps) {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-6 report-content">
+        
+        {/* Print Header - Visible only in print */}
+        <div className="print-header mb-8 hidden">
+          <div className="flex items-center justify-between border-b-2 border-black pb-4 mb-6">
+            <div>
+              <h1 className="text-3xl font-bold text-black uppercase tracking-wider mb-1">Sedno</h1>
+              <p className="text-sm text-gray-600">System Analizy Geopolitycznej MSZ</p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm font-mono text-gray-500">Data generowania:</p>
+              <p className="text-lg font-bold">{new Date().toLocaleDateString('pl-PL')}</p>
+            </div>
+          </div>
+        </div>
+
         {currentScenario ? (
           <article className="max-w-none">
             {/* Title */}
-            <h1 className="text-xl font-bold text-[var(--color-text-primary)] mb-4">
+            <h1 className="text-xl font-bold text-[var(--color-text-primary)] mb-4 print:text-3xl print:mb-6">
               {currentScenario.title}
             </h1>
 
             {/* Confidence badge */}
-            <div className="mb-6 flex items-center gap-3">
+            <div className="mb-6 flex items-center gap-3 no-print">
               <span className="text-sm text-[var(--color-text-muted)]">Pewność prognozy:</span>
               <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden max-w-xs">
                 <div
@@ -129,6 +162,11 @@ export default function ReportPanel({ scenarios, onClose }: ReportPanelProps) {
                 {Math.round(currentScenario.confidence * 100)}%
               </span>
             </div>
+            
+            {/* Confidence for Print */}
+            <div className="hidden print:block mb-6 p-2 border border-gray-300 rounded bg-gray-50">
+               <p className="text-sm font-bold">Pewność prognozy: {Math.round(currentScenario.confidence * 100)}%</p>
+            </div>
 
             {/* Rendered content - bezpieczne komponenty React */}
             <div className="space-y-4">
@@ -136,9 +174,21 @@ export default function ReportPanel({ scenarios, onClose }: ReportPanelProps) {
                 <MarkdownSection key={idx} section={section} />
               ))}
             </div>
+
+            {/* Chart Section (Feature 1.3) */}
+            {currentScenario.chartData && (
+              <div className="mt-8 p-4 bg-white/5 rounded-xl border border-[var(--color-border)] print:bg-white print:border-gray-300 print:break-inside-avoid">
+                <h3 className="text-sm font-bold text-[var(--color-text-muted)] uppercase tracking-wider mb-4 print:text-black">
+                  Wizualizacja Danych: {currentScenario.chartData.title}
+                </h3>
+                <div className="h-64 w-full print:h-80">
+                  <ChartRenderer data={currentScenario.chartData} />
+                </div>
+              </div>
+            )}
           </article>
         ) : (
-          <div className="text-center py-12">
+          <div className="text-center py-12 no-print">
             <div className="text-4xl mb-4">📭</div>
             <p className="text-[var(--color-text-muted)]">
               Brak scenariusza dla wybranych parametrów
@@ -151,7 +201,7 @@ export default function ReportPanel({ scenarios, onClose }: ReportPanelProps) {
       </div>
 
       {/* Footer - Export */}
-      <div className="p-4 border-t border-[var(--color-border)] flex gap-3">
+      <div className="p-4 border-t border-[var(--color-border)] flex gap-3 no-print">
         <button
           onClick={() => {
             if (currentScenario) {
@@ -162,12 +212,104 @@ export default function ReportPanel({ scenarios, onClose }: ReportPanelProps) {
         >
           Kopiuj do schowka
         </button>
-        <button className="flex-1 py-2.5 px-4 bg-[var(--color-cyan)]/20 text-[var(--color-cyan)] border border-[var(--color-cyan)]/30 rounded-lg hover:bg-[var(--color-cyan)]/30 transition-colors">
+        <button 
+          onClick={() => window.print()}
+          className="flex-1 py-2.5 px-4 bg-[var(--color-cyan)]/20 text-[var(--color-cyan)] border border-[var(--color-cyan)]/30 rounded-lg hover:bg-[var(--color-cyan)]/30 transition-colors"
+        >
           Eksportuj PDF
         </button>
       </div>
     </div>
   );
+}
+
+// === KOMPONENT WYKRESU ===
+
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
+
+function ChartRenderer({ data }: { data: ChartData }) {
+  if (!data.data || data.data.length === 0) return null;
+
+  switch (data.chart_type) {
+    case 'line':
+      return (
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data.data}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#444" opacity={0.3} />
+            <XAxis dataKey="x" stroke="#888" fontSize={12} />
+            <YAxis stroke="#888" fontSize={12} />
+            <Tooltip 
+              contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px' }}
+              itemStyle={{ color: '#fff' }}
+            />
+            <Legend />
+            <Line type="monotone" dataKey="y" stroke="#00d4ff" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+          </LineChart>
+        </ResponsiveContainer>
+      );
+    
+    case 'bar':
+      return (
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data.data}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#444" opacity={0.3} />
+            <XAxis dataKey="name" stroke="#888" fontSize={12} />
+            <YAxis stroke="#888" fontSize={12} />
+            <Tooltip 
+              contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px' }}
+              itemStyle={{ color: '#fff' }}
+            />
+            <Legend />
+            <Bar dataKey="value" fill="#00d4ff" radius={[4, 4, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      );
+
+    case 'pie':
+      return (
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={data.data}
+              cx="50%"
+              cy="50%"
+              labelLine={false}
+              outerRadius={80}
+              fill="#8884d8"
+              dataKey="value"
+              label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+            >
+              {data.data.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              ))}
+            </Pie>
+            <Tooltip 
+              contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px' }}
+              itemStyle={{ color: '#fff' }}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+      );
+
+    case 'area':
+      return (
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data.data}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#444" opacity={0.3} />
+            <XAxis dataKey="x" stroke="#888" fontSize={12} />
+            <YAxis stroke="#888" fontSize={12} />
+            <Tooltip 
+              contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px' }}
+              itemStyle={{ color: '#fff' }}
+            />
+            <Area type="monotone" dataKey="y" stroke="#8884d8" fill="#8884d8" fillOpacity={0.3} />
+          </AreaChart>
+        </ResponsiveContainer>
+      );
+
+    default:
+      return <div className="text-center text-gray-500 pt-10">Nieobsługiwany typ wykresu: {data.chart_type}</div>;
+  }
 }
 
 // === Typy dla parsowanego markdown ===
